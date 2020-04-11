@@ -2,9 +2,8 @@ import mechanicalsoup
 import gspread
 import json
 from oauth2client.service_account import ServiceAccountCredentials
-import time
 
-version = '0.4'
+version = '1.1'
 
 #---- Sunwell Login Code
 
@@ -26,8 +25,11 @@ scope = ['https://spreadsheets.google.com/feeds',
 creds = ServiceAccountCredentials.from_json_keyfile_name('client_secret.json', scope)
 client = gspread.authorize(creds)
 
-template = client.open("gear_template").sheet1
 sheet = client.open("Requiem_Roster_Gear")
+
+
+def copysheet(name):
+    sheet.duplicate_sheet(source_sheet_id='2112064012', insert_sheet_index=1, new_sheet_id=None, new_sheet_name=name)
 
 
 def parse(ign):
@@ -70,7 +72,8 @@ def gems(id):
     itemname = browser.get_current_page().find('h1')
     cleaned = str(itemname).split(">")
     cleaned2 = cleaned[1].split("<")
-    return cleaned2[0]
+    link = "=HYPERLINK({},{})".format('"https://wotlk.evowow.com/?item=' + id + '"', '"' + cleaned2[0] + '"')
+    return link
 
 
 def gearcheck(item):
@@ -82,26 +85,25 @@ def gearcheck(item):
 
 
 def rostercheck():
-    i = 0
-
+    y = 0
     names = json.loads(open('roster.json').read())
     sheetlist = sheet.worksheets()
+    home = sheet.worksheet('Home')
+    homelist = home.range("A2:A39")
 
     for wk in sheetlist:
-        if i < 1:
+        if 'id:2112064012' in str(wk) or 'id:812956190' in str(wk):
             pass
         else:
             sheet.del_worksheet(wk)
-        i += 1
+
+    for entry in homelist:
+        entry.value = ''
+
+    home.update_cells(homelist)
 
     for name in names:
         i = 0
-
-        worksheet = sheet.add_worksheet(title=name, rows="25", cols="5")
-        parsed = parse(name)
-        char = parsed[0]
-        dirty = parsed[1]
-
         itemlist = []
         enchantlist = []
         gemlist1 = []
@@ -109,18 +111,33 @@ def rostercheck():
         gemlist3 = []
         gemdict = [gemlist1, gemlist2, gemlist3]
 
+        copysheet(name)
+        worksheet = sheet.worksheet(name)
+        parsed = parse(name)
+        char = parsed[0]
+        dirty = parsed[1]
+
+        dgid = str(worksheet).split(":")[1]
+        gid = dgid[:-1]
+        toclink = "=HYPERLINK({},{})".format(
+            '"https://docs.google.com/spreadsheets/d/10IOzUiOiANSifho93ne8bIxNtxyWcNhNdGh8NEEysgQ/edit#gid='
+            + gid + '"', '"' + name + '"')
+
+        home.update('A' + str(y + 2), toclink, value_input_option='USER_ENTERED')
+        y += 1
+
         for item in char:
             cleaned = gearcheck(item)
             link = "=HYPERLINK({},{})".format('"' + item + '"', '"' + cleaned + '"')
             itemlist.append([link])
 
-        worksheet.update('A2', itemlist, value_input_option='USER_ENTERED')
+        worksheet.update('A' + str(i + 2), itemlist, value_input_option='USER_ENTERED')
 
         for item in dirty:
             if "ench" in item:
                 loc = item.find("ench")
                 stats = enchant(item[loc + 5:loc + 9])
-                if stats.startswith("+4" or "+6" or "+5" or "+8"):
+                if stats.startswith("+4" or "+6" or "+5" or "+8" or "+9"):
                     enchantlist.append([])
                 else:
                     enchantlist.append([stats])
@@ -147,8 +164,8 @@ def rostercheck():
                 gemdict[2].append([])
 
         for x in gemdict:
-            worksheet.update(chr(ord('C') + i) + str(2), gemdict[i])
+            worksheet.update(chr(ord('C') + i) + str(2), gemdict[i], value_input_option='USER_ENTERED')
             i += 1
 
-rostercheck()
 
+rostercheck()
