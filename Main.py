@@ -4,7 +4,7 @@ import json
 from oauth2client.service_account import ServiceAccountCredentials
 import time
 
-version = '0.2'
+version = '0.3'
 
 #---- Sunwell Login Code
 
@@ -31,20 +31,46 @@ sheet = client.open("Requiem_Roster_Gear")
 
 def parse(ign):
     gearlist = []
+    dirtylist = []
     browser.open("https://sunwell.pl/armory/Frosthold/" + ign)
     pull = browser.get_current_page().findAll("div", class_="item-slot")
+    blacklist = json.loads(open('blacklist.json').read())
+
     for item in pull:
         line = str(item).split("<")
         split1 = (line[3])
         split2 = split1.split('"')
+
         try:
-            if split2[3] == "https://db.darkwizard.pl/?item=5976":
+            split3 = split2[3].split('=')
+            if int(split3[1]) in blacklist:
+                print("skipped item ID: " + str(split2[3]))
                 pass
             else:
-                gearlist.append((split2[3]))
+                gearlist.append(split2[3])
+                try:
+                    dirtylist.append(split2[5])
+                except IndexError:
+                    pass
         except IndexError:
             pass
-    return gearlist
+    return gearlist, dirtylist
+
+
+def enchant(id):
+    browser.open('https://wotlk.evowow.com/?enchantment=' + id)
+    itemname = browser.get_current_page().find('h1')
+    cleaned = str(itemname).split(">")
+    cleaned2 = cleaned[1].split("<")
+    return cleaned2[0]
+
+
+def gems(id):
+    browser.open('https://wotlk.evowow.com/?item=' + id)
+    itemname = browser.get_current_page().find('h1')
+    cleaned = str(itemname).split(">")
+    cleaned2 = cleaned[1].split("<")
+    return cleaned2[0]
 
 
 def gearcheck(item):
@@ -70,16 +96,49 @@ def rostercheck():
 
     for name in names:
         i = 1
+        x = 1
+        y = 1
 
-        print(name)
         worksheet = sheet.add_worksheet(title=name, rows="25", cols="5")
-        char = parse(name)
+        parsed = parse(name)
+        char = parsed[0]
+        dirty = parsed[1]
 
         for item in char:
             cleaned = gearcheck(item)
-            worksheet.update('A' + str(i), cleaned)
-            worksheet.update('B' + str(i), item)
+            link = "=HYPERLINK({},{})".format('"' + item + '"', '"' + cleaned + '"')
+            worksheet.update('A' + str(i), link, value_input_option='USER_ENTERED')
             i += 1
             time.sleep(1)
+
+        for item in dirty:
+            if "ench" in item:
+                loc = item.find("ench")
+                stats = enchant(item[loc + 5:loc + 9])
+                if stats.startswith("+ 4" or "+ 6" or "+ 8"):
+                    pass
+                else:
+                    worksheet.update('B' + str(x), stats)
+            else:
+                pass
+
+            x += 1
+            time.sleep(1)
+
+        for item in dirty:
+            print("dirty item" + item)
+            if "gems" in item:
+                z = 0
+                split = item[5:].split("&")
+                split2 = split[0].split(":")
+                for gem in split2:
+                    stats = gems(gem)
+                    worksheet.update(chr(ord('C') + z) + str(y), stats)
+                    z += 1
+            else:
+                pass
+            y += 1
+            time.sleep(1)
+
 
 rostercheck()
